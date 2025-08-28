@@ -32,8 +32,11 @@ def load_data():
             df[c] = None
     return df[expected_cols]
 
+
+
 def save_excel(df: pd.DataFrame):
-    df.to_excel(EXCEL_PATH, index=False)
+    df.to_excel(EXCEL_PATH, index=False, engine="openpyxl")
+
 
 def to_excel_bytes(df: pd.DataFrame) -> bytes:
     buffer = BytesIO()
