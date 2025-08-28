@@ -23,10 +23,10 @@ def load_data():
         try:
             df = pd.read_excel(EXCEL_PATH)
         except Exception:
-            df = pd.DataFrame(columns=["ID", "Technicien", "Montant", "Date", "Justification", "Photos"]) 
+            df = pd.DataFrame(columns=["ID", "Technicien", "Montant (€)", "Date", "Justification", "Photos"]) 
     else:
-        df = pd.DataFrame(columns=["ID", "Technicien", "Montant", "Date", "Justification", "Photos"]) 
-    expected_cols = ["ID", "Technicien", "Montant", "Date", "Justification", "Photos"]
+        df = pd.DataFrame(columns=["ID", "Technicien", "Montant (€)", "Date", "Justification", "Photos"]) 
+    expected_cols = ["ID", "Technicien", "Montant (€)", "Date", "Justification", "Photos"]
     for c in expected_cols:
         if c not in df.columns:
             df[c] = None
@@ -72,7 +72,7 @@ with st.form("form_saisie", clear_on_submit=True):
     col1, col2 = st.columns(2)
     with col1:
         technicien = st.text_input("Nom du technicien *", placeholder="Ex: Ahmed B.")
-        montant = st.text_input("Montant (ex: 1500 DA ou 20.5 €) *")
+        montant = st.number_input("Montant (€) *", min_value=0.0, step=0.01, format="%.2f")
     with col2:
         date_val = st.date_input("Date *", datetime.today())
         justification = st.text_area("Justification *", placeholder="Détails de la dépense, station, véhicule, etc.")
@@ -88,8 +88,8 @@ if submitted:
     errors = []
     if not technicien.strip():
         errors.append("Le nom du technicien est requis.")
-    if not montant.strip():
-        errors.append("Le montant est requis.")
+    if montant <= 0:
+        errors.append("Le montant doit être supérieur à 0.")
     if not justification.strip():
         errors.append("La justification est requise.")
 
@@ -100,7 +100,7 @@ if submitted:
         df = st.session_state["df"].copy()
         rec_id = str(uuid.uuid4())[:8]
 
-        # Crée un dossier pour le technicien
+        # Crée un dossier par technicien
         tech_folder = sanitize_filename(technicien)
         dest_dir = os.path.join(JUSTIF_DIR, tech_folder)
         os.makedirs(dest_dir, exist_ok=True)
@@ -119,14 +119,14 @@ if submitted:
         new_row = {
             "ID": rec_id,
             "Technicien": technicien.strip(),
-            "Montant": montant.strip(),  # Stockage du montant tel quel (ex: "1500 DA")
+            "Montant (€)": float(montant),
             "Date": pd.to_datetime(date_val).date(),
             "Justification": justification.strip(),
             "Photos": "; ".join(saved_paths) if saved_paths else ""
         }
         df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
 
-        # Persist
+        # Sauvegarde
         save_excel(df)
         st.session_state["df"] = df
         st.success("✅ Saisie enregistrée et fichiers sauvegardés !")
@@ -167,7 +167,12 @@ if not fdf.empty:
 
 st.dataframe(fdf, use_container_width=True)
 
-# Download Excel
+# Total montant filtré
+if not fdf.empty:
+    total = fdf["Montant (€)"].sum()
+    st.metric(label="Total (filtré)", value=f"{total:,.2f} €")
+
+# Téléchargement Excel
 excel_bytes = to_excel_bytes(df)
 st.download_button(
     label="📥 Télécharger l'Excel complet",
@@ -192,10 +197,4 @@ if not df.empty:
                 imgs.append(full)
     if imgs:
         cols = st.columns(5)
-        for i, img in enumerate(imgs[:20]):
-            with cols[i % 5]:
-                st.image(img, use_container_width=True)
-    else:
-        st.info("Pas d'images à afficher pour le moment (ou fichiers PDF uniquement).")
-else:
-    st.info("Aucune donnée encore. Utilisez le formulaire ci-dessus pour commencer.")
+        for i, img in enumerat
