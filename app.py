@@ -197,4 +197,10 @@ if not df.empty:
                 imgs.append(full)
     if imgs:
         cols = st.columns(5)
-        for i, img in enumerat
+        for i, img in enumerate(imgs[:20]):
+            with cols[i % 5]:
+                st.image(img, use_container_width=True)
+    else:
+        st.info("Pas d'images à afficher pour le moment (ou fichiers PDF uniquement).")
+else:
+    st.info("Aucune donnée encore. Utilisez le formulaire ci-dessus pour commencer.")
