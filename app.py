@@ -23,11 +23,11 @@ def load_data():
         try:
             df = pd.read_excel(EXCEL_PATH)
         except Exception:
-            df = pd.DataFrame(columns=["ID", "Technicien", "Montant", "Date", "Justification", "Photos"]) 
+            df = pd.DataFrame(columns=["ID", "Technicien", "Montant", "Unité", "Date", "Justification", "Photos"]) 
     else:
-        df = pd.DataFrame(columns=["ID", "Technicien", "Montant", "Date", "Justification", "Photos"]) 
+        df = pd.DataFrame(columns=["ID", "Technicien", "Montant", "Unité", "Date", "Justification", "Photos"]) 
     # Ensure correct columns
-    expected_cols = ["ID", "Technicien", "Montant", "Date", "Justification", "Photos"]
+    expected_cols = ["ID", "Technicien", "Montant", "Unité", "Date", "Justification", "Photos"]
     for c in expected_cols:
         if c not in df.columns:
             df[c] = None
@@ -47,8 +47,7 @@ def sanitize_filename(name: str) -> str:
     bad = '<>:"/\\|?*'
     for ch in bad:
         name = name.replace(ch, "-")
-    name = name.strip().replace(" ", "_")
-    return name or "inconnu"
+    return name.strip().replace(" ", "_") or "inconnu"
 
 # =========================
 # UI
@@ -74,7 +73,8 @@ with st.form("form_saisie", clear_on_submit=True):
     col1, col2 = st.columns(2)
     with col1:
         technicien = st.text_input("Nom du technicien *", placeholder="Ex: Ahmed B.")
-        montant = st.number_input("Montant (DA / €) *", min_value=0.0, step=0.01, format="%.2f")
+        montant = st.number_input("Montant *", min_value=0.0, step=0.01, format="%.2f")
+        unite = st.selectbox("Unité du montant *", ["DA", "€"])
     with col2:
         date_val = st.date_input("Date *", datetime.today())
         justification = st.text_area("Justification *", placeholder="Détails de la dépense, station, véhicule, etc.")
@@ -102,17 +102,16 @@ if submitted:
         df = st.session_state["df"].copy()
         rec_id = str(uuid.uuid4())[:8]
 
-        # Create folder per day/technician
-        day_folder = date_val.strftime("%Y-%m-%d")
+        # Crée un dossier par technicien pour regrouper toutes les dépenses
         tech_folder = sanitize_filename(technicien)
-        dest_dir = os.path.join(JUSTIF_DIR, day_folder, tech_folder)
+        dest_dir = os.path.join(JUSTIF_DIR, tech_folder)
         os.makedirs(dest_dir, exist_ok=True)
 
         saved_paths = []
         if fichiers:
             for f in fichiers:
                 ext = os.path.splitext(f.name)[1].lower()
-                unique_name = f"{datetime.now().strftime('%H%M%S')}_{uuid.uuid4().hex[:6]}{ext}"
+                unique_name = f"{date_val}_{datetime.now().strftime('%H%M%S')}_{uuid.uuid4().hex[:6]}{ext}"
                 out_path = os.path.join(dest_dir, unique_name)
                 with open(out_path, "wb") as out:
                     out.write(f.getbuffer())
@@ -123,6 +122,7 @@ if submitted:
             "ID": rec_id,
             "Technicien": technicien.strip(),
             "Montant": float(montant),
+            "Unité": unite,
             "Date": pd.to_datetime(date_val).date(),
             "Justification": justification.strip(),
             "Photos": "; ".join(saved_paths) if saved_paths else ""
@@ -173,7 +173,7 @@ st.dataframe(fdf, use_container_width=True)
 # Total montant filtré
 if not fdf.empty:
     total = fdf["Montant"].sum()
-    st.metric(label="Total (filtré)", value=f"{total:,.2f}")
+    st.metric(label="Total (filtré)", value=f"{total:,.2f} {fdf['Unité'].iloc[0] if len(fdf['Unité'].unique()) == 1 else ''}")
 
 # Download Excel
 excel_bytes = to_excel_bytes(df)
