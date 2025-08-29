@@ -19,26 +19,32 @@ os.makedirs(JUSTIF_DIR, exist_ok=True)
 # HELPERS
 # =========================
 def load_data():
+    """Charge les données existantes ou crée un DataFrame vide"""
     if os.path.exists(EXCEL_PATH):
         try:
-            df = pd.read_excel(EXCEL_PATH)
+            df = pd.read_excel(EXCEL_PATH, engine="openpyxl")
         except Exception:
-            df = pd.DataFrame(columns=["ID", "Technicien", "Montant", "Date", "Justification", "Photos"])
+            df = pd.DataFrame(columns=["ID", "Technicien", "Montant (€)", "Date", "Justification", "Photos"])
     else:
-        df = pd.DataFrame(columns=["ID", "Technicien", "Montant", "Date", "Justification", "Photos"])
-    expected_cols = ["ID", "Technicien", "Montant", "Date", "Justification", "Photos"]
+        df = pd.DataFrame(columns=["ID", "Technicien", "Montant (€)", "Date", "Justification", "Photos"])
+
+    expected_cols = ["ID", "Technicien", "Montant (€)", "Date", "Justification", "Photos"]
     for c in expected_cols:
         if c not in df.columns:
             df[c] = None
     return df[expected_cols]
 
-
-
 def save_excel(df: pd.DataFrame):
-    df.to_excel(EXCEL_PATH, index=False, engine="openpyxl")
-
+    """Enregistre le DataFrame dans un fichier Excel"""
+    try:
+        df.to_excel(EXCEL_PATH, index=False, engine="openpyxl")
+    except FileNotFoundError:
+        with open(EXCEL_PATH, "wb") as f:
+            pass
+        df.to_excel(EXCEL_PATH, index=False, engine="openpyxl")
 
 def to_excel_bytes(df: pd.DataFrame) -> bytes:
+    """Convertit le DataFrame en binaire pour téléchargement"""
     buffer = BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name="Gasoil")
@@ -46,44 +52,47 @@ def to_excel_bytes(df: pd.DataFrame) -> bytes:
     return buffer.getvalue()
 
 def sanitize_filename(name: str) -> str:
+    """Nettoie les noms de fichiers/dossiers"""
     bad = '<>:"/\\|?*'
     for ch in bad:
         name = name.replace(ch, "-")
-    return name.strip().replace(" ", "_") or "inconnu"
+    name = name.strip().replace(" ", "_")
+    return name or "inconnu"
 
 # =========================
-# UI
+# UI CONFIG
 # =========================
 st.set_page_config(page_title="Gestion des dépenses de gasoil", page_icon="⛽", layout="wide")
 st.title("⛽ Gestion des dépenses de gasoil – Saisie & Export Excel")
 
-with st.expander("⚙️ Emplacement des fichiers (cliquer pour voir)"):
+with st.expander("⚙️ Emplacement des fichiers"):
     st.write(f"**Dossier des données :** `{BASE_DIR}`")
     st.write(f"**Fichier Excel :** `{EXCEL_PATH}`")
     st.write(f"**Dossier des justificatifs :** `{JUSTIF_DIR}`")
 
 st.markdown("---")
 
-# Load existing data
+# =========================
+# LOAD DATA
+# =========================
 st.session_state.setdefault("df", load_data())
 
 # =========================
-# FORMULAIRE DE SAISIE
+# FORM SAISIE
 # =========================
 st.subheader("📝 Nouvelle saisie")
 with st.form("form_saisie", clear_on_submit=True):
     col1, col2 = st.columns(2)
     with col1:
         technicien = st.text_input("Nom du technicien *", placeholder="Ex: Ahmed B.")
-        montant = st.text_input("Montant * (ex: 150, 20.5 €, etc.)")
+        montant = st.text_input("Montant (€) *", placeholder="Ex: 150.50 ou 200")
     with col2:
         date_val = st.date_input("Date *", datetime.today())
         justification = st.text_area("Justification *", placeholder="Détails de la dépense, station, véhicule, etc.")
     fichiers = st.file_uploader(
         "Photos justificatives (plusieurs possibles)",
         type=["jpg", "jpeg", "png", "webp", "pdf"],
-        accept_multiple_files=True,
-        help="Ajoutez autant de fichiers que nécessaire (images ou PDF)."
+        accept_multiple_files=True
     )
     submitted = st.form_submit_button("💾 Enregistrer")
 
@@ -103,7 +112,7 @@ if submitted:
         df = st.session_state["df"].copy()
         rec_id = str(uuid.uuid4())[:8]
 
-        # Dossier unique par technicien pour regrouper les justificatifs
+        # Utiliser un seul dossier par technicien
         tech_folder = sanitize_filename(technicien)
         dest_dir = os.path.join(JUSTIF_DIR, tech_folder)
         os.makedirs(dest_dir, exist_ok=True)
@@ -112,7 +121,7 @@ if submitted:
         if fichiers:
             for f in fichiers:
                 ext = os.path.splitext(f.name)[1].lower()
-                unique_name = f"{date_val}_{datetime.now().strftime('%H%M%S')}_{uuid.uuid4().hex[:6]}{ext}"
+                unique_name = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}{ext}"
                 out_path = os.path.join(dest_dir, unique_name)
                 with open(out_path, "wb") as out:
                     out.write(f.getbuffer())
@@ -122,14 +131,15 @@ if submitted:
         new_row = {
             "ID": rec_id,
             "Technicien": technicien.strip(),
-            "Montant": montant.strip(),
+            "Montant (€)": montant.strip(),
             "Date": pd.to_datetime(date_val).date(),
             "Justification": justification.strip(),
             "Photos": "; ".join(saved_paths) if saved_paths else ""
         }
+
         df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
 
-        # Sauvegarde
+        # Sauvegarde dans Excel
         save_excel(df)
         st.session_state["df"] = df
         st.success("✅ Saisie enregistrée et fichiers sauvegardés !")
@@ -147,7 +157,6 @@ st.subheader("📊 Historique des dépenses")
 
 df = st.session_state["df"]
 
-# Filtres
 with st.expander("🔎 Filtres"):
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -170,13 +179,15 @@ if not fdf.empty:
 
 st.dataframe(fdf, use_container_width=True)
 
-# Download Excel
+if not fdf.empty:
+    st.metric(label="Total (filtré)", value=f"{len(fdf)} dépenses")
+
 excel_bytes = to_excel_bytes(df)
 st.download_button(
     label="📥 Télécharger l'Excel complet",
     data=excel_bytes,
     file_name="gasoil_records.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
 
 # =========================
