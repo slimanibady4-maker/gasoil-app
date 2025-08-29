@@ -10,6 +10,7 @@ import uuid
 # =========================
 BASE_DIR = "gasoil_site_data"
 EXCEL_PATH = os.path.join(BASE_DIR, "gasoil_records.xlsx")
+CSV_PATH = os.path.join(BASE_DIR, "gasoil_records.csv")
 JUSTIF_DIR = os.path.join(BASE_DIR, "justifications")
 
 os.makedirs(BASE_DIR, exist_ok=True)
@@ -18,81 +19,103 @@ os.makedirs(JUSTIF_DIR, exist_ok=True)
 # =========================
 # HELPERS
 # =========================
-def load_data():
-    """Charge les données existantes ou crée un DataFrame vide"""
-    if os.path.exists(EXCEL_PATH):
-        try:
-            df = pd.read_excel(EXCEL_PATH, engine="openpyxl")
-        except Exception:
-            df = pd.DataFrame(columns=["ID", "Technicien", "Montant (€)", "Date", "Justification", "Photos"])
-    else:
-        df = pd.DataFrame(columns=["ID", "Technicien", "Montant (€)", "Date", "Justification", "Photos"])
-
-    expected_cols = ["ID", "Technicien", "Montant (€)", "Date", "Justification", "Photos"]
-    for c in expected_cols:
+def _ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
+    cols = ["ID", "Technicien", "Montant (€)", "Date", "Justification", "Photos"]
+    for c in cols:
         if c not in df.columns:
             df[c] = None
-    return df[expected_cols]
+    return df[cols]
 
-def save_excel(df: pd.DataFrame):
-    """Enregistre le DataFrame dans un fichier Excel"""
+def load_data() -> pd.DataFrame:
+    """Charge d'abord depuis CSV (robuste), sinon tente Excel, sinon DF vide."""
+    if os.path.exists(CSV_PATH):
+        try:
+            df = pd.read_csv(CSV_PATH)
+        except Exception:
+            df = pd.DataFrame()
+    elif os.path.exists(EXCEL_PATH):
+        try:
+            # Tente openpyxl puis fallback auto
+            try:
+                df = pd.read_excel(EXCEL_PATH, engine="openpyxl")
+            except Exception:
+                df = pd.read_excel(EXCEL_PATH)
+        except Exception:
+            df = pd.DataFrame()
+    else:
+        df = pd.DataFrame()
+
+    df = _ensure_columns(df)
+    # Normalise la date (si texte)
     try:
-        df.to_excel(EXCEL_PATH, index=False, engine="openpyxl")
-    except FileNotFoundError:
-        with open(EXCEL_PATH, "wb") as f:
-            pass
-        df.to_excel(EXCEL_PATH, index=False, engine="openpyxl")
+        df["Date"] = pd.to_datetime(df["Date"]).dt.date
+    except Exception:
+        pass
+    return df
 
-def to_excel_bytes(df: pd.DataFrame) -> bytes:
-    """Convertit le DataFrame en binaire pour téléchargement"""
+def save_data(df: pd.DataFrame):
+    """Persistance principale en CSV (pas de dépendances)."""
+    df.to_csv(CSV_PATH, index=False)
+
+def to_excel_bytes(df: pd.DataFrame):
+    """Essaie de produire un XLSX en mémoire. Fallback: None si moteur absent."""
+    engine = None
+    try:
+        import openpyxl  # noqa: F401
+        engine = "openpyxl"
+    except Exception:
+        try:
+            import xlsxwriter  # noqa: F401
+            engine = "xlsxwriter"
+        except Exception:
+            return None
+
     buffer = BytesIO()
-    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+    with pd.ExcelWriter(buffer, engine=engine) as writer:
         df.to_excel(writer, index=False, sheet_name="Gasoil")
     buffer.seek(0)
     return buffer.getvalue()
 
 def sanitize_filename(name: str) -> str:
-    """Nettoie les noms de fichiers/dossiers"""
     bad = '<>:"/\\|?*'
     for ch in bad:
         name = name.replace(ch, "-")
-    name = name.strip().replace(" ", "_")
-    return name or "inconnu"
+    return (name.strip().replace(" ", "_") or "inconnu")
 
 # =========================
-# UI CONFIG
+# UI
 # =========================
 st.set_page_config(page_title="Gestion des dépenses de gasoil", page_icon="⛽", layout="wide")
-st.title("⛽ Gestion des dépenses de gasoil – Saisie & Export Excel")
+st.title("⛽ Gestion des dépenses de gasoil – Saisie & Export")
 
 with st.expander("⚙️ Emplacement des fichiers"):
     st.write(f"**Dossier des données :** `{BASE_DIR}`")
-    st.write(f"**Fichier Excel :** `{EXCEL_PATH}`")
+    st.write(f"**Fichier CSV (persistance) :** `{CSV_PATH}`")
+    st.write(f"**Fichier Excel (export si possible) :** `{EXCEL_PATH}`")
     st.write(f"**Dossier des justificatifs :** `{JUSTIF_DIR}`")
 
 st.markdown("---")
 
-# =========================
-# LOAD DATA
-# =========================
+# Load existing data
 st.session_state.setdefault("df", load_data())
 
 # =========================
-# FORM SAISIE
+# FORMULAIRE DE SAISIE
 # =========================
 st.subheader("📝 Nouvelle saisie")
 with st.form("form_saisie", clear_on_submit=True):
     col1, col2 = st.columns(2)
     with col1:
         technicien = st.text_input("Nom du technicien *", placeholder="Ex: Ahmed B.")
-        montant = st.text_input("Montant (€) *", placeholder="Ex: 150.50 ou 200")
+        montant = st.text_input("Montant (€) *", placeholder="Ex: 150, 150.50, 150 € (texte libre)")
     with col2:
         date_val = st.date_input("Date *", datetime.today())
         justification = st.text_area("Justification *", placeholder="Détails de la dépense, station, véhicule, etc.")
     fichiers = st.file_uploader(
         "Photos justificatives (plusieurs possibles)",
         type=["jpg", "jpeg", "png", "webp", "pdf"],
-        accept_multiple_files=True
+        accept_multiple_files=True,
+        help="Ajoutez autant de fichiers que nécessaire (images ou PDF)."
     )
     submitted = st.form_submit_button("💾 Enregistrer")
 
@@ -112,7 +135,7 @@ if submitted:
         df = st.session_state["df"].copy()
         rec_id = str(uuid.uuid4())[:8]
 
-        # Utiliser un seul dossier par technicien
+        # Un seul dossier par technicien -> centralise tous ses justificatifs
         tech_folder = sanitize_filename(technicien)
         dest_dir = os.path.join(JUSTIF_DIR, tech_folder)
         os.makedirs(dest_dir, exist_ok=True)
@@ -125,22 +148,21 @@ if submitted:
                 out_path = os.path.join(dest_dir, unique_name)
                 with open(out_path, "wb") as out:
                     out.write(f.getbuffer())
-                rel_path = os.path.relpath(out_path, BASE_DIR)
-                saved_paths.append(rel_path.replace("\\", "/"))
+                rel_path = os.path.relpath(out_path, BASE_DIR).replace("\\", "/")
+                saved_paths.append(rel_path)
 
         new_row = {
             "ID": rec_id,
             "Technicien": technicien.strip(),
-            "Montant (€)": montant.strip(),
+            "Montant (€)": montant.strip(),   # texte libre
             "Date": pd.to_datetime(date_val).date(),
             "Justification": justification.strip(),
             "Photos": "; ".join(saved_paths) if saved_paths else ""
         }
-
         df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
 
-        # Sauvegarde dans Excel
-        save_excel(df)
+        # Persistance robuste (CSV)
+        save_data(df)
         st.session_state["df"] = df
         st.success("✅ Saisie enregistrée et fichiers sauvegardés !")
 
@@ -163,9 +185,9 @@ with st.expander("🔎 Filtres"):
         techs = sorted([t for t in df["Technicien"].dropna().unique()]) if not df.empty else []
         tech_filter = st.multiselect("Techniciens", techs)
     with c2:
-        date_min = st.date_input("Date min", value=df["Date"].min() if not df.empty else datetime.today())
+        date_min = st.date_input("Date min", value=(pd.to_datetime(df["Date"]).min().date() if not df.empty else datetime.today().date()))
     with c3:
-        date_max = st.date_input("Date max", value=df["Date"].max() if not df.empty else datetime.today())
+        date_max = st.date_input("Date max", value=(pd.to_datetime(df["Date"]).max().date() if not df.empty else datetime.today().date()))
 
 fdf = df.copy()
 if not fdf.empty:
@@ -179,16 +201,25 @@ if not fdf.empty:
 
 st.dataframe(fdf, use_container_width=True)
 
-if not fdf.empty:
-    st.metric(label="Total (filtré)", value=f"{len(fdf)} dépenses")
-
+# Boutons de téléchargement
 excel_bytes = to_excel_bytes(df)
-st.download_button(
-    label="📥 Télécharger l'Excel complet",
-    data=excel_bytes,
-    file_name="gasoil_records.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-)
+if excel_bytes is not None:
+    st.download_button(
+        label="📥 Télécharger en Excel (.xlsx)",
+        data=excel_bytes,
+        file_name="gasoil_records.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+else:
+    # Fallback CSV si aucun moteur Excel n'est dispo
+    csv_bytes = df.to_csv(index=False).encode("utf-8-sig")
+    st.download_button(
+        label="📥 Télécharger en CSV (fallback)",
+        data=csv_bytes,
+        file_name="gasoil_records.csv",
+        mime="text/csv",
+    )
+    st.info("ℹ️ Export Excel indisponible (ni openpyxl ni xlsxwriter). Export CSV proposé à la place.")
 
 # =========================
 # APERCU DES PHOTOS
