@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "gasoil-uploader",
+  "private_key_id": "33796bcfdb579de72119cd17071ce83a88349263",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCS1K+7NCxNEvfi\nb6hTc+e7pMa7mzenVm2mLk2HGNPFzELgpKaTSGXdELrfoYIc+qXHTlfBnF+vjK0C\n9D0N3fIqFS/xvPvFrnyR8XG60Mcwx5tcx7R1g/Teodm/18Z7s/hXBRQLgxyKeMOn\nqpg/wHlZZXMfcvQAgcISFQo1JUGZHMtVlSRsHgJ3068bzGrbiQXCnyepzX8SaO97\nOzDvMv3TPCXgiEjOAtApOnZXTP2hclXSWk/O4tsjP60QgIzUb7Puii7ua1z27Nzp\nyK7f8s3aKade2vKJvJjYZSNrDVPMOUnWlodZGn2e3CwTboLR3u/ItOPMOj5O1x2b\njQEU7uV/AgMBAAECggEAD3k3fcB9TLALjILc19KWoLk4MkwkvM9IZeNqSyrsImOo\nxpjDbzEJfxcEwo14M0qcztisOdybXtox32ZSytPRcerirxSN6eK+APlTVW8sFrFq\nZ4gqNdouo4ml82gvZBjuumjwGFh8WQFqCRDa05kakLe2vqE0IpuKErLB7SDcfWCZ\nFfobkmsOFYEzW2idXwWKoSZmAZDcFZ+AmIYwEuz8sg6s+qIHkkvG1JW2Zgj9uPrV\nYzIRHHLR/yqsEY7hD6rg8RxKu1YvzwkTwWeoabSm4U2DqmxDl/MOJpn5DquwTfVw\nHbD34VEbdX2cYFEPw/XqJv/mbP5uLJ7QU9C1Vz8RWQKBgQDB70MWR0+ICFol2gTq\nnzuGsF+SzJVcfB6DRWh7WOFKISkTakDffdT6DIYn+U9Gx9ROi+sVogEA8VSGARew\n2/WT3oUXgFpaqOJvcStvRvia2YWJ9nkLBZRuPjPC5UybtM3A4Qb3dia7YAdks3QD\nNyyaTrxRXNuLEjEO1ixPZ0cnKQKBgQDB0knE4X0w96WKDMG1So7bi5DrEE1LZeDs\nWSfPeVSzKA/iD2tEAx+UYThf8i/pTHdDAbu9XypgAXKj/AHY0Xd9TchYZx6Wp8h0\n+lAxoOg8wK/KwG/EQg/PW3QES63Q66wtH0HsblwgvjBuRQiP6akB6cL+v1PoVTSn\nkrAactWEZwKBgBFYu2F0w3JhfN7B34q073geso3I6ts45unK/Yt66bvdt3TbHi5f\nbPtov18395VXLnBQJ5jpwrk43NyXoGzbX934G2N8wZg2Xvqk3sO3T2laZ41tlGod\n96bcvXiDVhTfWUAVYLAly1UbQ84IFypqdvzeag3FBoYr/GNdWN1JWZ3xAoGAPsTD\nbyc3S+xnh9WpxfRnX2JLhFS7M3fC58fXxLEeZQbMXgFwU45PY9Y4U5ozOfKxjNm6\n2xE+v+i4H7M1RepQMBxIjZiXp2Ke4INQBUJ+823TgG3hxEVAqX6Mi/eWStqH3/UH\nfHIhE9mEBbIFm9WoDh6OL8H2gn9Vlg9DSM13qHECgYEAtW25UP40izxLALviWy1Y\nNaQypiaomQPFCywEZirD8j1lqOBKNYFu9/w+IIbtnq0ioy6BBolVsixNoLSMZ/2c\nEsuJZ2Gn9H05+xATA51zVzNeT4CQr0LJgd3+P4Tah0N0F/Cp5c6eErdCQy5dreoL\nPGaLiazjycaXBSfhkGiYdnM=\n-----END PRIVATE KEY-----\n",
+  "client_email": "gasoil@gasoil-uploader.iam.gserviceaccount.com",
+  "client_id": "100433515843725381006",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/gasoil%40gasoil-uploader.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
