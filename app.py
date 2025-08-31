@@ -4,121 +4,134 @@ import os
 import uuid
 from datetime import date
 from io import BytesIO
-import gspread
 from google.oauth2.service_account import Credentials
-from pydrive.auth import GoogleAuth
-from pydrive.drive import GoogleDrive
+import gspread
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
 
 # =========================
 # CONFIG GOOGLE
 # =========================
 SERVICE_ACCOUNT_FILE = "gasoil-uploader-33796bcfdb57.json"
-SCOPES = ["https://www.googleapis.com/auth/drive"]
+SCOPES = ["https://www.googleapis.com/auth/drive", "https://www.googleapis.com/auth/spreadsheets"]
 
-# Authentification Google Sheets
+# Auth Google Sheets
 creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
 gc = gspread.authorize(creds)
 
-# Authentification Google Drive
-gauth = GoogleAuth()
-gauth.ServiceAuth(SERVICE_ACCOUNT_FILE)
-drive = GoogleDrive(gauth)
+# Auth Google Drive
+drive_service = build('drive', 'v3', credentials=creds)
 
-# Ouvrir ou créer le Google Sheet
+# Google Sheet
+SHEET_NAME = "Gasoil_Records"
 try:
-    sh = gc.open("Gasoil_Records")
+    sh = gc.open(SHEET_NAME)
 except gspread.SpreadsheetNotFound:
-    sh = gc.create("Gasoil_Records")
+    sh = gc.create(SHEET_NAME)
 worksheet = sh.sheet1
 
-# ID du dossier Google Drive où stocker les justificatifs
-# Mets ici ton dossier partagé Drive
-FOLDER_ID = "1Drc-2yYlHd7mScOGp13ALKHUKQFneAEF"
+# Google Drive folder ID pour les justificatifs
+DRIVE_FOLDER_ID = "1Drc-2yYlHd7mScOGp13ALKHUKQFneAEF"
 
 # =========================
 # HELPERS
 # =========================
-def sanitize_filename(name: str) -> str:
+def _to_date_series(s):
+    return pd.to_datetime(s, errors="coerce").dt.date
+
+def load_data():
+    try:
+        data = worksheet.get_all_records()
+        df = pd.DataFrame(data)
+    except Exception:
+        df = pd.DataFrame()
+    df = _ensure_cols(df)
+    df["Date"] = _to_date_series(df["Date"])
+    return df
+
+def _ensure_cols(df):
+    cols = ["ID", "Technicien", "Montant", "Date", "Justification", "Photos"]
+    for c in cols:
+        if c not in df.columns:
+            df[c] = ""
+    return df[cols]
+
+def save_to_sheet(df):
+    worksheet.clear()
+    worksheet.update([df.columns.values.tolist()] + df.values.tolist())
+
+def sanitize_filename(name):
     bad = '<>:"/\\|?*'
     for ch in bad:
         name = name.replace(ch, "-")
-    name = name.strip().replace(" ", "_")
-    return name or "inconnu"
+    return name.strip().replace(" ", "_") or "inconnu"
 
-def parse_amount_to_float(txt: str):
+def parse_amount_to_float(txt):
     if txt is None:
         return None
-    s = str(txt).replace("€", "").replace("EUR", "").replace("eur", "").replace(" ", "").replace(",", ".")
+    s = str(txt).replace("€", "").replace(",", ".").replace(" ", "")
     try:
         return float(s)
-    except Exception:
+    except:
         return None
 
-def save_to_google_sheet(row: dict):
-    # Ajouter ligne dans Google Sheet
-    worksheet.append_row([row["ID"], row["Technicien"], row["Montant"], str(row["Date"]), row["Justification"], row["Photos"]])
-
-def upload_file_to_drive(local_file_path, folder_id=FOLDER_ID):
-    file_drive = drive.CreateFile({'title': os.path.basename(local_file_path), 'parents': [{'id': folder_id}]})
-    file_drive.SetContentFile(local_file_path)
-    file_drive.Upload()
-    return file_drive['id']
+def upload_file_to_drive(local_path, folder_id):
+    file_metadata = {'name': os.path.basename(local_path), 'parents': [folder_id]}
+    media = MediaFileUpload(local_path, resumable=True)
+    file = drive_service.files().create(body=file_metadata, media_body=media, fields='id, name').execute()
+    return file.get('id')
 
 def to_excel_bytes(df: pd.DataFrame) -> bytes:
     buffer = BytesIO()
-    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        df.to_excel(writer, index=False, sheet_name="Gasoil")
+    df.to_excel(buffer, index=False, engine="openpyxl")
     buffer.seek(0)
     return buffer.getvalue()
 
 # =========================
 # STREAMLIT UI
 # =========================
-st.set_page_config(page_title="Gestion Gasoil", page_icon="⛽", layout="wide")
-st.title("⛽ Gestion des dépenses de gasoil – Saisie & Export")
+st.set_page_config(page_title="Gestion gasoil", page_icon="⛽", layout="wide")
+st.title("⛽ Gestion des dépenses de gasoil")
 
+st.session_state.setdefault("df", load_data())
+
+# ---- Formulaire ----
 st.subheader("📝 Nouvelle saisie")
 with st.form("form_saisie", clear_on_submit=True):
     col1, col2 = st.columns(2)
     with col1:
-        technicien = st.text_input("Nom du technicien *")
-        montant = st.text_input("Montant (€) *")
+        technicien = st.text_input("Nom du technicien *", placeholder="Ex: Ahmed B.")
+        montant = st.text_input("Montant (€) *", placeholder="Ex: 50,50")
     with col2:
         date_val = st.date_input("Date *", value=date.today())
-        justification = st.text_area("Justification *")
+        justification = st.text_area("Justification *", placeholder="Détails de la dépense")
     fichiers = st.file_uploader(
-        "Photos justificatives (plusieurs possibles)",
-        type=["jpg", "jpeg", "png", "webp", "pdf"],
-        accept_multiple_files=True
+        "Photos justificatives (jpg, png, pdf) - plusieurs possibles",
+        type=["jpg","jpeg","png","pdf"], accept_multiple_files=True
     )
     submitted = st.form_submit_button("💾 Enregistrer")
 
 if submitted:
     errors = []
-    if not technicien.strip():
-        errors.append("Le nom du technicien est requis.")
-    if not montant.strip():
-        errors.append("Le montant est requis.")
-    if not justification.strip():
-        errors.append("La justification est requise.")
-    
-    if errors:
-        for e in errors:
-            st.error(e)
-    else:
-        rec_id = str(uuid.uuid4())[:8]
-        saved_paths = []
+    if not technicien.strip(): errors.append("Nom requis")
+    if not montant.strip(): errors.append("Montant requis")
+    if not justification.strip(): errors.append("Justification requise")
 
-        # Enregistrer fichiers sur Google Drive
+    if errors:
+        for e in errors: st.error(e)
+    else:
+        df = st.session_state["df"].copy()
+        rec_id = str(uuid.uuid4())[:8]
+
+        saved_paths = []
         if fichiers:
             for f in fichiers:
-                ext = os.path.splitext(f.name)[1].lower()
-                tmp_path = f"{uuid.uuid4().hex}{ext}"
+                tmp_path = f"temp_{uuid.uuid4().hex}_{f.name}"
                 with open(tmp_path, "wb") as out:
                     out.write(f.getbuffer())
-                file_id = upload_file_to_drive(tmp_path)
+                file_id = upload_file_to_drive(tmp_path, DRIVE_FOLDER_ID)
+                os.remove(tmp_path)
                 saved_paths.append(f"https://drive.google.com/file/d/{file_id}/view?usp=sharing")
-                os.remove(tmp_path)  # Supprimer fichier local temporaire
 
         new_row = {
             "ID": rec_id,
@@ -128,39 +141,22 @@ if submitted:
             "Justification": justification.strip(),
             "Photos": "; ".join(saved_paths)
         }
+        df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+        save_to_sheet(df)
+        st.session_state["df"] = df
+        st.success("✅ Saisie enregistrée et fichiers envoyés sur Drive !")
 
-        # Enregistrer dans Google Sheet
-        save_to_google_sheet(new_row)
-        st.success("✅ Saisie enregistrée et fichiers sauvegardés sur Google Drive !")
-
-        if saved_paths:
-            st.caption("Fichiers enregistrés :")
-            for p in saved_paths:
-                st.write(f"• {p}")
-
-# =========================
-# AFFICHAGE DES DONNÉES
-# =========================
+# ---- Historique ----
 st.markdown("---")
-st.subheader("📊 Historique des dépenses")
+st.subheader("📊 Historique")
+df = st.session_state["df"].copy()
+df["Date"] = _to_date_series(df["Date"])
+st.dataframe(df, use_container_width=True)
 
-# Lire toutes les données depuis Google Sheet
-data = worksheet.get_all_records()
-df = pd.DataFrame(data)
-
-if not df.empty:
-    df["Montant_float"] = [parse_amount_to_float(x) for x in df["Montant"]]
-    st.dataframe(df, use_container_width=True)
-    st.metric(label="Total général", value=f"{df['Montant_float'].sum():,.2f} €" if not df['Montant_float'].isna().all() else "—")
-else:
-    st.info("Aucune donnée pour le moment.")
-
-# Télécharger Excel
-if not df.empty:
-    excel_bytes = to_excel_bytes(df)
-    st.download_button(
-        label="📥 Télécharger l'Excel complet",
-        data=excel_bytes,
-        file_name="gasoil_records.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
+st.markdown("---")
+st.download_button(
+    "📥 Télécharger Excel",
+    data=to_excel_bytes(df),
+    file_name="gasoil_records.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
