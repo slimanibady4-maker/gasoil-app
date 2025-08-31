@@ -12,7 +12,7 @@ from pydrive.drive import GoogleDrive
 # =========================
 # CONFIGURATION
 # =========================
-SERVICE_ACCOUNT_FILE = "gasoil-uploader-33796bcfdb57.json"
+SERVICE_ACCOUNT_FILE = "gasoil-uploader-91adc02a1dfb.json"
 SCOPES = ["https://www.googleapis.com/auth/drive", "https://www.googleapis.com/auth/spreadsheets"]
 SHEET_NAME = "Gasoil_Records"
 DRIVE_FOLDER_ID = "1Drc-2yYlHd7mScOGp13ALKHUKQFneAEF"
